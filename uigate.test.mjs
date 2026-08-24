@@ -38,6 +38,20 @@ test('DEAD CONTROL — a handler with no inline definition is flagged; a defined
   assert.ok(!has(scanHtml(`<a onclick="window.print()">print</a>`), 'dead-control'));
 });
 
+test('NO DEAD CONTROL from prose inside a string argument', () => {
+  // the fallseed-law false positive: "courses (fire safety…)" lived inside usePrompt('…')
+  const html = `<button onclick="usePrompt('training register — which courses (fire safety, GDPR) done')">x</button>
+    <script>function usePrompt(){}</script>`;
+  const r = scanHtml(html);
+  assert.ok(!has(r, 'dead-control'), '"courses(" inside a string arg is not a function call');
+});
+
+test('NO DEAD CONTROL for $() — a fn name that is a regex metachar must be escaped', () => {
+  // the fallclaim false positive: "$" is defined but "\\b$" was read as an end-anchor
+  const html = `<button onclick="$('x').focus()">y</button><script>const $ = (s) => document.querySelector(s);</script>`;
+  assert.ok(!has(scanHtml(html), 'dead-control'), '$ is defined; the name must be regex-escaped');
+});
+
 test('INCONSISTENT YEAR — two different tax-year labels on one page (the fallaccount bug)', () => {
   assert.ok(has(scanHtml('<h1>Tax 2025-26</h1><p>rates 2026/27</p>'), 'inconsistent-year'));
   assert.ok(!has(scanHtml('<h1>Tax 2026/27</h1><p>for 2026/27 only</p>'), 'inconsistent-year'), 'one consistent year is fine');
@@ -53,6 +67,10 @@ test('DEAD LINK — href="#", empty, or javascript:void points nowhere', () => {
   assert.ok(has(scanHtml('<a href="">Click</a>'), 'dead-link'));
   assert.ok(has(scanHtml('<a href="javascript:void(0)">Click</a>'), 'dead-link'));
   assert.ok(!has(scanHtml('<a href="https://gov.uk">GOV.UK</a>'), 'dead-link'));
+  // an anchor wired to JS is an intentional control, not a dead link — handler before OR after href
+  assert.ok(!has(scanHtml('<a href="#" onclick="openMenu()">Menu</a>'), 'dead-link'));
+  assert.ok(!has(scanHtml('<a onclick="openMenu()" href="#">Menu</a>'), 'dead-link'), 'handler before href counts too');
+  assert.ok(!has(scanHtml('<a href="#" role="button">Toggle</a>'), 'dead-link'));
 });
 
 test('A CLEAN PAGE TRIPS NOTHING — no false positives on a well-formed page', () => {
@@ -80,6 +98,21 @@ test('SCRIPT-LITERAL SCANNING IS LIMITED TO alarm words/literals — not punctua
   // only DEAD/undefined/NaN-class words are chased into script DOM-assignments.
   const r = scanHtml(`<body>fine text</body><script>x.textContent='ok..'</script>`);
   assert.ok(!has(r, 'punctuation'), 'a double-stop inside a script string is not a shipped user-visible defect');
+});
+
+test('UNCLOSED TRAILING SCRIPT — its defs are seen and its code does not leak as visible text', () => {
+  // a single-file page whose last <script> has no </script> (browser auto-closes at EOF).
+  const html = `<button onclick="openModal()">x</button>
+<script>
+function openModal(){ return typeof window !== 'undefined'; }
+</script>
+<script>
+'use strict';
+function boot(){ const k = cond ? undefined : 'id'; return k; }
+<button onclick="boot()">go</button>`;   // note: no closing </script> — runs to EOF
+  const r = scanHtml(html);
+  assert.ok(!has(r, 'dead-control'), 'openModal/boot are defined in the (unclosed) script — not dead');
+  assert.ok(!has(r, 'alarm-literal'), '"undefined" inside the script code is not user-visible text');
 });
 
 test('NO FALSE NaN — "NaN" must not match the "nan" inside ordinary words like Tenant', () => {

@@ -14,14 +14,19 @@ const S = (v) => (typeof v === 'string' ? v : '');
 // ── extract the <script> bodies and the visible (non-script/style) text ───────────────────────────
 function scripts(html) {
   const out = [];
-  const re = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
+  const re = /<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi;
   let m; while ((m = re.exec(html))) out.push(m[1]);
+  // a single-file page often ends with an UNCLOSED <script> (browser auto-closes at EOF);
+  // capture that trailing block too, or its code is invisible to every script-based check.
+  const tail = html.replace(re, '').match(/<script\b[^>]*>([\s\S]*)$/i);
+  if (tail) out.push(tail[1]);
   return out;
 }
 function visibleText(html) {
   return S(html)
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ' ')
+    .replace(/<script\b[^>]*>[\s\S]*$/i, ' ')   // an unclosed trailing script → strip to EOF, not into "visible" text
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/[ \t]+/g, ' ');
@@ -66,11 +71,18 @@ function alarmFindings(html) {
 // ── 2 · dead controls: an on*-handler calling a function the page never defines ───────────────────
 function deadControls(html) {
   const out = [];
-  const scriptText = scripts(html).join('\n');
+  // check definitions against the WHOLE document, not an extracted script blob — a function defined
+  // anywhere (incl. an unclosed trailing script) is defined, and the def patterns are specific enough
+  // that ordinary prose can't false-match them.
+  const scriptText = S(html);
+  const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // fn names can contain $ — escape before RegExp
   const handlers = new Set();
   const hre = /\bon\w+\s*=\s*"([^"]*)"|\bon\w+\s*=\s*'([^']*)'/g;
   let h; while ((h = hre.exec(html))) {
-    const code = h[1] || h[2] || '';
+    const raw = h[1] || h[2] || '';
+    // strip string literals FIRST: prose inside a string arg (usePrompt('…which courses (fire…)'))
+    // is not a function call. Only tokens outside quotes are real calls.
+    const code = raw.replace(/'[^']*'/g, "''").replace(/"[^"]*"/g, '""').replace(/`[^`]*`/g, '``');
     const cre = /([A-Za-z_$][\w$]*)\s*\(/g; let c;
     while ((c = cre.exec(code))) {
       const fn = c[1];
@@ -82,12 +94,15 @@ function deadControls(html) {
     }
   }
   for (const fn of handlers) {
+    const e = reEsc(fn);
+    // identifier-aware boundaries: JS identifier chars are [\w$], so \b breaks on names like "$".
+    const NB = '(?<![\\w$])', NA = '(?![\\w$])';
     const def = new RegExp(
-      '(function\\s+' + fn + '\\b)|' +
-      '\\b' + fn + '\\s*[=:]\\s*(function|\\([^)]*\\)\\s*=>|async)|' +
-      '\\b(const|let|var)\\s+' + fn + '\\b|' +
-      'window\\.' + fn + '\\s*=|' +
-      '\\b' + fn + '\\s*\\([^)]*\\)\\s*\\{'   // method-style definition
+      'function\\s+' + e + NA + '|' +
+      NB + e + '\\s*[=:]\\s*(function|\\([^)]*\\)\\s*=>|async)|' +
+      '(const|let|var)\\s+' + e + NA + '|' +
+      'window\\.' + e + '\\s*=|' +
+      NB + e + '\\s*\\([^)]*\\)\\s*\\{'   // method-style definition
     );
     if (!def.test(scriptText)) {
       out.push({ kind: 'dead-control', severity: 'medium', why: `a control calls ${fn}() but no INLINE script defines it — likely a dead button (unless it lives in an external .js)`, evidence: fn + '()' });
@@ -122,12 +137,14 @@ function cssVars(html) {
 // ── 5 · placeholder / dead links ──────────────────────────────────────────────────────────────────
 function deadLinks(html) {
   const out = []; let m;
-  const re = /<a\b[^>]*\bhref\s*=\s*("|')(.*?)\1[^>]*>(.*?)<\/a>/gis;
+  const re = /<a\b([^>]*)\bhref\s*=\s*("|')(.*?)\2([^>]*)>(.*?)<\/a>/gis;
   while ((m = re.exec(html))) {
-    const href = S(m[2]).trim();
-    if (href === '' || href === '#' || /^javascript:\s*void/i.test(href) || /^(TODO|TBD|#)$/i.test(href)) {
-      // '#' with an id target elsewhere is fine only if it's an in-page anchor the page uses; a bare '#' is a dead link
-      const label = clip(m[3].replace(/<[^>]+>/g, ''), 40);
+    const attrs = (m[1] || '') + (m[4] || '');
+    const href = S(m[3]).trim();
+    // an anchor wired to JS (onclick/onmousedown/role=button) is an intentional control, not a dead link
+    if (/\bon\w+\s*=/i.test(attrs) || /\brole\s*=\s*["']?button/i.test(attrs)) continue;
+    if (href === '' || href === '#' || /^javascript:\s*void/i.test(href) || /^(TODO|TBD)$/i.test(href)) {
+      const label = clip(m[5].replace(/<[^>]+>/g, ''), 40);
       out.push({ kind: 'dead-link', severity: 'low', why: `a link labelled "${label}" points nowhere (href="${href || '(empty)'}")`, evidence: href || '(empty)' });
     }
   }

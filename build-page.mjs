@@ -23,5 +23,7 @@ const htmlPath = join(here, 'index.html');
 const html = readFileSync(htmlPath, 'utf8');
 const re = /\/\*__KERNEL_START__\*\/[\s\S]*?\/\*__KERNEL_END__\*\//;
 if (!re.test(html)) { console.error('REFUSED: markers not found in index.html'); process.exit(1); }
-writeFileSync(htmlPath, html.replace(re, block));
+// replacement FUNCTION, not string: the kernel contains "$&" (in reEsc) which String.replace would
+// otherwise expand as the matched text — a $-substitution footgun that made the build non-idempotent.
+writeFileSync(htmlPath, html.replace(re, () => block));
 console.log(`inlined ${(kernel.length / 1024).toFixed(1)}KB kernel into index.html`);

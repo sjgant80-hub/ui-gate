@@ -109,7 +109,7 @@ const ALARMS = [
   { re: /\bNaN\b/g, kind: 'alarm-literal', sev: 'high', why: '"NaN" — a number calculation failed and shipped the failure' },
   { re: /£\s*NaN|NaN\s*%|\$NaN/g, kind: 'alarm-literal', sev: 'high', why: 'a money/percent field computed NaN' },
   { re: /\bDEAD\b/g, kind: 'alarm-word', sev: 'medium', why: '"DEAD" shown to a user reads as broken (e.g. an unlicensed-tier badge)' },
-  { re: /\b(TODO|FIXME|XXX|PLACEHOLDER|TBD|WIP)\b/g, kind: 'placeholder-text', sev: 'medium', why: 'dev placeholder text shipped to users' },
+  { re: /(?<![\w-])(TODO|FIXME|XXX|PLACEHOLDER|TBD|WIP)(?![\w-])/g, kind: 'placeholder-text', sev: 'medium', why: 'dev placeholder text shipped to users' },
   { re: /lorem ipsum/gi, kind: 'placeholder-text', sev: 'medium', why: 'lorem-ipsum filler shipped' },
   { re: /[A-Za-z][.]{2}(?![.])/g, kind: 'punctuation', sev: 'low', why: 'a word followed by exactly two full stops ("..") — a template appended a stop to text that already ended in one (not an ellipsis)' },
 ];
@@ -190,9 +190,13 @@ function yearConsistency(html) {
   const text = visibleText(html);
   const years = new Set();
   let m; const re = /\b(20\d\d)\s*[\/–-]\s*(\d\d)\b/g;
-  while ((m = re.exec(text))) years.add(m[1] + '-' + m[2]);
-  if (years.size > 1) {
-    return [{ kind: 'inconsistent-year', severity: 'medium', why: 'the page shows more than one tax-year label — at most one is current', evidence: [...years].join(' vs ') }];
+  while ((m = re.exec(text))) {
+    // only REAL consecutive tax-year labels (2025-26, 2026-27) — not dates like 2023-06 or versions
+    if (+m[2] === (+m[1] % 100 + 1) % 100) years.add(m[1] + '-' + m[2]);
+  }
+  // exactly two distinct current-year claims = a likely mislabel; 3+ is an intentional series (history/table)
+  if (years.size === 2) {
+    return [{ kind: 'inconsistent-year', severity: 'medium', why: 'the page shows two different tax-year labels — at most one is current', evidence: [...years].join(' vs ') }];
   }
   return [];
 }

@@ -52,9 +52,17 @@ test('NO DEAD CONTROL for $() — a fn name that is a regex metachar must be esc
   assert.ok(!has(scanHtml(html), 'dead-control'), '$ is defined; the name must be regex-escaped');
 });
 
-test('INCONSISTENT YEAR — two different tax-year labels on one page (the fallaccount bug)', () => {
-  assert.ok(has(scanHtml('<h1>Tax 2025-26</h1><p>rates 2026/27</p>'), 'inconsistent-year'));
+test('INCONSISTENT YEAR — two conflicting tax-year labels, but not dates or a multi-year series', () => {
+  assert.ok(has(scanHtml('<h1>Tax 2025-26</h1><p>rates 2026/27</p>'), 'inconsistent-year'), 'the fallaccount bug: two current-year claims');
   assert.ok(!has(scanHtml('<h1>Tax 2026/27</h1><p>for 2026/27 only</p>'), 'inconsistent-year'), 'one consistent year is fine');
+  assert.ok(!has(scanHtml('<p>records 2023-06, 2020-03, 2023-01</p>'), 'inconsistent-year'), 'dates (non-consecutive) are not tax years');
+  assert.ok(!has(scanHtml('<p>2016-17 2022-23 2023-24 2024-25 2025-26</p>'), 'inconsistent-year'), 'a multi-year data series is intentional, not a mislabel');
+});
+
+test('PLACEHOLDER TEXT — a standalone marker fires, a hyphenated word does not', () => {
+  assert.ok(has(scanHtml('<p>TODO: wire this up</p>'), 'placeholder-text'));
+  assert.ok(has(scanHtml('<p>lorem ipsum dolor sit amet</p>'), 'placeholder-text'));
+  assert.ok(!has(scanHtml('<p>quality = fraction of non-TODO lines</p>'), 'placeholder-text'), '"non-TODO" is prose about TODOs, not a placeholder');
 });
 
 test('UNDEFINED CSS VAR — used but never defined is flagged; a defined one is not', () => {

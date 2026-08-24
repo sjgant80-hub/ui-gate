@@ -1,0 +1,7 @@
+[
+  {
+    "mutation": "< → <=",
+    "snippet": "const inModule = (pos) => moduleRanges.some(([s, e]) => pos >= s && pos < e);",
+    "reason": "boundary-equivalent: `e` is the byte offset of a module block's `</script`, and `pos` is a function-DEFINITION match start. A definition (function X…, const X =…) can never begin at the `<` of a closing tag, so pos === e is impossible — no input distinguishes `pos < e` from `pos <= e`. The half-open range is correct; the mutant cannot change any verdict."
+  }
+]

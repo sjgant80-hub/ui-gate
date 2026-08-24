@@ -54,6 +54,10 @@ test('A MODULE FN EXPOSED VIA window IS reachable; a CLASSIC-script fn is reacha
   const classic = `<button onclick="openThing()">x</button><script>function openThing(){}</script>`;
   assert.ok(!has(scanHtml(classic), 'unreachable-control'), 'a classic top-level fn is global');
   assert.ok(!has(scanHtml(classic), 'dead-control'));
+  // a classic def BEFORE a module block must count as reachable (its position is outside the module range)
+  const beforeMod = `<button onclick="foo()">x</button><script>function foo(){ return 1; }</script><script type="module">const z = 2;</script>`;
+  assert.ok(!has(scanHtml(beforeMod), 'unreachable-control'), 'a classic def before a module is still reachable');
+  assert.ok(!has(scanHtml(beforeMod), 'dead-control'));
 });
 
 test('NO DEAD CONTROL from prose inside a string argument', () => {

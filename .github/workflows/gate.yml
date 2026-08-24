@@ -16,7 +16,8 @@ jobs:
         run: |
           git clone --depth 1 --branch v0.6 https://github.com/sjgant80-hub/witness.git /tmp/witness
           node /tmp/witness/witness.mjs mutate uigate.mjs \
-            --timeout 60000 --cap 700 \
+            --timeout 60000 --cap 900 \
+            --baseline witness.baseline.json \
             --test node --test uigate.test.mjs
 
       - name: the live page still carries the gated kernel

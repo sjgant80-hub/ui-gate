@@ -108,7 +108,7 @@ const ALARMS = [
   { re: /\bundefined\b/g, kind: 'alarm-literal', sev: 'high', why: '"undefined" rendered to the user — a missing value reached the DOM' },
   { re: /\bNaN\b/g, kind: 'alarm-literal', sev: 'high', why: '"NaN" — a number calculation failed and shipped the failure' },
   { re: /£\s*NaN|NaN\s*%|\$NaN/g, kind: 'alarm-literal', sev: 'high', why: 'a money/percent field computed NaN' },
-  { re: /\bDEAD\b/g, kind: 'alarm-word', sev: 'medium', why: '"DEAD" shown to a user reads as broken (e.g. an unlicensed-tier badge)' },
+  { re: /◊\s*DEAD\b/g, kind: 'alarm-word', sev: 'medium', why: 'the "◊ DEAD" tier badge reads as broken to a user (relabel the unlicensed tier to FREE)' },
   { re: /(?<![\w-])(TODO|FIXME|XXX|PLACEHOLDER|TBD|WIP)(?![\w-])/g, kind: 'placeholder-text', sev: 'medium', why: 'dev placeholder text shipped to users' },
   { re: /lorem ipsum/gi, kind: 'placeholder-text', sev: 'medium', why: 'lorem-ipsum filler shipped' },
   { re: /[A-Za-z][.]{2}(?![.])/g, kind: 'punctuation', sev: 'low', why: 'a word followed by exactly two full stops ("..") — a template appended a stop to text that already ended in one (not an ellipsis)' },

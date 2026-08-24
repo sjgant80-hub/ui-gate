@@ -20,6 +20,8 @@ test('THE "DEAD" BADGE — an alarm word injected by a script is caught (the fal
   assert.ok(has(r, 'alarm-word'), 'must flag DEAD assigned to the DOM');
   // and the FIXED version (FREE) trips nothing
   assert.ok(!has(scanHtml(`<script>el.textContent='◊ FREE';</script>`), 'alarm-word'));
+  // "DEAD" as legitimate content (a rubric grade, "dead code") is NOT the badge — only "◊ DEAD" is
+  assert.ok(!has(scanHtml('<td class="mono">DEAD</td><p>an UNASSESSABLE or DEAD finding</p>'), 'alarm-word'));
 });
 
 test('DOUBLE FULL-STOP — the redress-engine letter bug is caught, but a real ellipsis is not', () => {

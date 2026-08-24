@@ -27,6 +27,9 @@ function visibleText(html) {
     .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ' ')
     .replace(/<script\b[^>]*>[\s\S]*$/i, ' ')   // an unclosed trailing script → strip to EOF, not into "visible" text
     .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, ' ')
+    // code samples legitimately CONTAIN undefined/NaN/[object Object] as example text — not defects
+    .replace(/<pre\b[^>]*>[\s\S]*?<\/pre\s*>/gi, ' ')
+    .replace(/<code\b[^>]*>[\s\S]*?<\/code\s*>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/[ \t]+/g, ' ');
@@ -53,13 +56,19 @@ function alarmFindings(html) {
     // visible text is the strong signal
     let m; a.re.lastIndex = 0;
     while ((m = a.re.exec(text))) {
+      // a fully quoted token ("[object Object]", "undefined") is the page DISCUSSING it, not rendering
+      // it — a real broken render is bare (Total: [object Object]). Skip the quoted mention.
+      const QUOTES = ['"', "'", '`'];
+      if (QUOTES.includes(text[m.index - 1]) && QUOTES.includes(text[m.index + m[0].length])) continue;
       out.push({ kind: a.kind, severity: a.sev, why: a.why, evidence: clip(text.slice(Math.max(0, m.index - 30), m.index + 40)) });
     }
     // script string-literals that get assigned to what the user sees
     if (a.kind === 'alarm-word' || a.kind === 'alarm-literal') {
       // case-SENSITIVE and keep the word boundaries: "NaN" is an exact JS token, not the "nan"
       // inside "Tenant"; the alarm source is wrapped in (?:…) so its own alternation stays contained.
-      const assignRe = new RegExp('(textContent|innerHTML|innerText|placeholder|value)\\s*[=:]\\s*[`\'"][^`\'"]*?(?:' + a.re.source + ')[^`\'"]*?[`\'"]', 'g');
+      // only the unambiguous render sinks — value/placeholder catch template conditionals like
+      // value="${x!==undefined?x:1}", which are logic, not a shipped broken value.
+      const assignRe = new RegExp('(textContent|innerHTML|innerText)\\s*[=:]\\s*[`\'"][^`\'"]*?(?:' + a.re.source + ')[^`\'"]*?[`\'"]', 'g');
       let s; while ((s = assignRe.exec(scriptText))) {
         out.push({ kind: a.kind, severity: a.sev, why: a.why + ' (assigned to the DOM in a script)', evidence: clip(s[0]) });
       }

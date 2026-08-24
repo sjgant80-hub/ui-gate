@@ -100,6 +100,25 @@ test('SCRIPT-LITERAL SCANNING IS LIMITED TO alarm words/literals — not punctua
   assert.ok(!has(r, 'punctuation'), 'a double-stop inside a script string is not a shipped user-visible defect');
 });
 
+test('CODE SAMPLES are not defects — undefined/NaN/[object Object] inside <pre>/<code> is example text', () => {
+  assert.ok(!has(scanHtml('<pre>if (typeof x !== "undefined") return NaN;</pre>'), 'alarm-literal'));
+  assert.ok(!has(scanHtml('<p>hashing avoids <code>[object Object]</code> collisions</p>'), 'alarm-literal'));
+  // but a real broken value in ordinary prose still fires
+  assert.ok(has(scanHtml('<p>Welcome back, undefined!</p>'), 'alarm-literal'));
+  // a FULLY-QUOTED mention is discussion, not a rendered value — all three quote styles
+  assert.ok(!has(scanHtml('<p>flattens to "[object Object]" here</p>'), 'alarm-literal'), 'double-quoted mention skipped');
+  assert.ok(!has(scanHtml("<p>flattens to '[object Object]' here</p>"), 'alarm-literal'), 'single-quoted mention skipped');
+  assert.ok(!has(scanHtml('<p>flattens to `[object Object]` here</p>'), 'alarm-literal'), 'backtick mention skipped');
+  // only ONE side quoted is NOT a mention — a real render can be adjacent to a quote
+  assert.ok(has(scanHtml('<p>Total: [object Object]"</p>'), 'alarm-literal'), 'one-sided quote still fires');
+  assert.ok(has(scanHtml('<p>Total: [object Object]</p>'), 'alarm-literal'), 'bare (unquoted) still fires');
+});
+
+test('TEMPLATE CONDITIONALS are not shipped broken values — value="${x!==undefined?…}"', () => {
+  const r = scanHtml(`<script>const h = '<input value="' + (a!==undefined?a:1) + '">'; el.value = undefined;</script>`);
+  assert.ok(!has(r, 'alarm-literal'), 'value= and template logic are not a rendered undefined');
+});
+
 test('UNCLOSED TRAILING SCRIPT — its defs are seen and its code does not leak as visible text', () => {
   // a single-file page whose last <script> has no </script> (browser auto-closes at EOF).
   const html = `<button onclick="openModal()">x</button>

@@ -8,9 +8,10 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const kernel = readFileSync(join(here, 'uigate.mjs'), 'utf8')
   .replace(/^export default .*$/m, '')
-  .replace(/^export /gm, '');
-
-if (/<\/script/i.test(kernel)) { console.error('REFUSED: kernel contains </script'); process.exit(1); }
+  .replace(/^export /gm, '')
+  // the kernel legitimately contains the STRING "</script" (it looks for closing tags). Escape it as
+  // "<\/script" — identical JS string value, but the HTML parser won't close our inline <script> early.
+  .replace(/<\/script/gi, '<\\/script');
 
 const block = `/*__KERNEL_START__*/
 (function(){

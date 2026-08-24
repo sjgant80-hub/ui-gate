@@ -150,11 +150,20 @@ function deadControls(html) {
   // inside <script type="module"> is module-scoped and unreachable — "defined" but still a dead button.
   // So split the scripts by type; the def patterns are specific enough that prose can't false-match them.
   const whole = S(html);
-  let classicJs = '', moduleJs = '';
-  const sre = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi; let sm;
-  while ((sm = sre.exec(whole))) { if (/\btype\s*=\s*["']?module/i.test(sm[1])) moduleJs += '\n' + sm[2]; else classicJs += '\n' + sm[2]; }
-  const tail = whole.replace(sre, ' ').match(/<script\b([^>]*)>([\s\S]*)$/i);   // unclosed trailing script
-  if (tail) { if (/\btype\s*=\s*["']?module/i.test(tail[1])) moduleJs += '\n' + tail[2]; else classicJs += '\n' + tail[2]; }
+  // Definitions are searched in the WHOLE document (robust — never loses a real definition, which is
+  // what a per-script split does on unclosed single-file pages). Reachability is decided separately:
+  // an inline onclick runs in GLOBAL scope, so a fn is reachable iff a definition sits OUTSIDE every
+  // <script type="module"> block, or it is assigned to window/globalThis. A fn defined ONLY inside a
+  // module block is module-scoped — "defined" but unreachable. So we need the module byte-ranges only.
+  const moduleRanges = [];
+  const openRe = /<script\b([^>]*)>/gi; let om;
+  while ((om = openRe.exec(whole))) {
+    const start = openRe.lastIndex;
+    let end = whole.indexOf('<\/script', start); if (end === -1) end = whole.length;
+    if (/\btype\s*=\s*["']?module/i.test(om[1])) moduleRanges.push([start, end]);
+    openRe.lastIndex = end;
+  }
+  const inModule = (pos) => moduleRanges.some(([s, e]) => pos >= s && pos < e);
   const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // fn names can contain $ — escape before RegExp
   const handlers = new Set();
   const hre = /\bon\w+\s*=\s*"([^"]*)"|\bon\w+\s*=\s*'([^']*)'/g;
@@ -181,11 +190,14 @@ function deadControls(html) {
       'function\\s+' + e + NA + '|' +
       NB + e + '\\s*[=:]\\s*(function|\\([^)]*\\)\\s*=>|async)|' +
       '(const|let|var)\\s+' + e + NA + '|' +
-      NB + e + '\\s*\\([^)]*\\)\\s*\\{'   // method-style definition
+      NB + e + '\\s*\\([^)]*\\)\\s*\\{',   // method-style definition
+      'g'
     );
     const onWindow = new RegExp('(window|globalThis)\\.' + e + '\\s*=').test(whole);
-    if (onWindow || def.test(classicJs)) continue;                 // global — reachable from inline onclick
-    if (def.test(moduleJs)) {
+    let anyDef = false, reachableDef = false, dm; def.lastIndex = 0;
+    while ((dm = def.exec(whole))) { anyDef = true; if (!inModule(dm.index)) { reachableDef = true; break; } }
+    if (onWindow || reachableDef) continue;                        // global — reachable from inline onclick
+    if (anyDef) {
       out.push({ kind: 'unreachable-control', severity: 'medium', why: `a control calls ${fn}() but it is defined ONLY inside a <script type="module"> — module scope, so an inline onclick cannot reach it (expose it via window.${fn} or move it to a classic script)`, evidence: fn + '()' });
     } else {
       out.push({ kind: 'dead-control', severity: 'medium', why: `a control calls ${fn}() but no INLINE script defines it — likely a dead button (unless it lives in an external .js)`, evidence: fn + '()' });

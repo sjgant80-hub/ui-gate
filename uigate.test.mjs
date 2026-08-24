@@ -40,6 +40,22 @@ test('DEAD CONTROL — a handler with no inline definition is flagged; a defined
   assert.ok(!has(scanHtml(`<a onclick="window.print()">print</a>`), 'dead-control'));
 });
 
+test('UNREACHABLE CONTROL — a fn defined ONLY inside a module is module-scoped, not global', () => {
+  // fallbookspaper's class: the app is a <script type="module">, so inline onclick can't reach it
+  const modOnly = `<button onclick="openThing()">x</button><script type="module">function openThing(){ return 1; }</script>`;
+  const r = scanHtml(modOnly);
+  assert.ok(has(r, 'unreachable-control'), 'module-scoped fn must be flagged unreachable, not clean');
+  assert.ok(!has(r, 'dead-control'), 'it IS defined — just unreachable, not dead');
+});
+
+test('A MODULE FN EXPOSED VIA window IS reachable; a CLASSIC-script fn is reachable', () => {
+  const exposed = `<button onclick="openThing()">x</button><script type="module">function openThing(){}; window.openThing = openThing;</script>`;
+  assert.ok(!has(scanHtml(exposed), 'unreachable-control'), 'window.fn = exposes it to global');
+  const classic = `<button onclick="openThing()">x</button><script>function openThing(){}</script>`;
+  assert.ok(!has(scanHtml(classic), 'unreachable-control'), 'a classic top-level fn is global');
+  assert.ok(!has(scanHtml(classic), 'dead-control'));
+});
+
 test('NO DEAD CONTROL from prose inside a string argument', () => {
   // the fallseed-law false positive: "courses (fire safety…)" lived inside usePrompt('…')
   const html = `<button onclick="usePrompt('training register — which courses (fire safety, GDPR) done')">x</button>

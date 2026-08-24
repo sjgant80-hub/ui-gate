@@ -145,10 +145,16 @@ function alarmFindings(html) {
 // ── 2 · dead controls: an on*-handler calling a function the page never defines ───────────────────
 function deadControls(html) {
   const out = [];
-  // check definitions against the WHOLE document, not an extracted script blob — a function defined
-  // anywhere (incl. an unclosed trailing script) is defined, and the def patterns are specific enough
-  // that ordinary prose can't false-match them.
-  const scriptText = S(html);
+  // An inline onclick runs in GLOBAL scope, so it can only reach a function that is global: a top-level
+  // declaration in a CLASSIC <script>, or one assigned to window/globalThis. A function defined only
+  // inside <script type="module"> is module-scoped and unreachable — "defined" but still a dead button.
+  // So split the scripts by type; the def patterns are specific enough that prose can't false-match them.
+  const whole = S(html);
+  let classicJs = '', moduleJs = '';
+  const sre = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi; let sm;
+  while ((sm = sre.exec(whole))) { if (/\btype\s*=\s*["']?module/i.test(sm[1])) moduleJs += '\n' + sm[2]; else classicJs += '\n' + sm[2]; }
+  const tail = whole.replace(sre, ' ').match(/<script\b([^>]*)>([\s\S]*)$/i);   // unclosed trailing script
+  if (tail) { if (/\btype\s*=\s*["']?module/i.test(tail[1])) moduleJs += '\n' + tail[2]; else classicJs += '\n' + tail[2]; }
   const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // fn names can contain $ — escape before RegExp
   const handlers = new Set();
   const hre = /\bon\w+\s*=\s*"([^"]*)"|\bon\w+\s*=\s*'([^']*)'/g;
@@ -175,10 +181,13 @@ function deadControls(html) {
       'function\\s+' + e + NA + '|' +
       NB + e + '\\s*[=:]\\s*(function|\\([^)]*\\)\\s*=>|async)|' +
       '(const|let|var)\\s+' + e + NA + '|' +
-      'window\\.' + e + '\\s*=|' +
       NB + e + '\\s*\\([^)]*\\)\\s*\\{'   // method-style definition
     );
-    if (!def.test(scriptText)) {
+    const onWindow = new RegExp('(window|globalThis)\\.' + e + '\\s*=').test(whole);
+    if (onWindow || def.test(classicJs)) continue;                 // global — reachable from inline onclick
+    if (def.test(moduleJs)) {
+      out.push({ kind: 'unreachable-control', severity: 'medium', why: `a control calls ${fn}() but it is defined ONLY inside a <script type="module"> — module scope, so an inline onclick cannot reach it (expose it via window.${fn} or move it to a classic script)`, evidence: fn + '()' });
+    } else {
       out.push({ kind: 'dead-control', severity: 'medium', why: `a control calls ${fn}() but no INLINE script defines it — likely a dead button (unless it lives in an external .js)`, evidence: fn + '()' });
     }
   }

@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ui-gate — the gate for the surface</title>
+<meta name="description" content="Paste a page's HTML and get the user-surface defects a kernel gate is blind to: shipped undefined/NaN, a DEAD badge, dead controls, undefined CSS vars, dead links, stale year labels. Static first-pass lint, gated." />
+<style>
+  :root{
+    --bg:#faf8f3; --panel:#fff; --ink:#1a1a1e; --soft:#6b6b73; --line:#e5e1d8;
+    --hi:#c0392b; --med:#c77d18; --lo:#b0a020; --ok:#2e8b57; --accent:#3a5a8a;
+  }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+    --bg:#14141a; --panel:#1c1c24; --ink:#e8e6df; --soft:#9a9aa4; --line:#2c2c36;
+    --hi:#e5675a; --med:#e0a040; --lo:#d4c95a; --ok:#5cc98a; --accent:#7fa3d8;
+  }}
+  :root[data-theme="dark"]{
+    --bg:#14141a; --panel:#1c1c24; --ink:#e8e6df; --soft:#9a9aa4; --line:#2c2c36;
+    --hi:#e5675a; --med:#e0a040; --lo:#d4c95a; --ok:#5cc98a; --accent:#7fa3d8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:860px;margin:0 auto;padding:28px 20px 64px}
+  h1{font-size:1.7rem;margin:0 0 4px;letter-spacing:-.02em}
+  .sub{color:var(--soft);margin:0 0 22px}
+  .sub b{color:var(--ink)}
+  textarea{width:100%;min-height:200px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;resize:vertical}
+  .row{display:flex;gap:10px;align-items:center;margin:12px 0}
+  button{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:10px 18px;font-size:15px;font-weight:600;cursor:pointer}
+  button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+  .summary{font-weight:600;margin:18px 0 8px}
+  .f{background:var(--panel);border:1px solid var(--line);border-left-width:4px;border-radius:8px;padding:10px 14px;margin:8px 0}
+  .f.high{border-left-color:var(--hi)} .f.medium{border-left-color:var(--med)} .f.low{border-left-color:var(--lo)}
+  .f .k{font:12px ui-monospace,monospace;color:var(--soft);text-transform:uppercase;letter-spacing:.05em}
+  .f .why{margin:2px 0}
+  .f .ev{font:12px/1.4 ui-monospace,monospace;color:var(--soft);background:color-mix(in srgb,var(--ink) 6%,transparent);padding:4px 8px;border-radius:5px;margin-top:6px;overflow-x:auto;white-space:pre}
+  .clean{color:var(--ok);font-weight:600}
+  .note{color:var(--soft);font-size:.9rem;margin-top:26px;border-top:1px solid var(--line);padding-top:14px}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ui-gate</h1>
+  <p class="sub">The gate for the <b>surface</b>. A kernel gate proves the maths; this catches what a
+  <b>user</b> hits and the kernel never sees — shipped <code>undefined</code>/<code>NaN</code>, a badge
+  that says <code>DEAD</code>, dead controls, undefined CSS vars, dead links, a stale year label. Paste a
+  page's HTML; it runs the same gated kernel the CI uses. Static first-pass — a browser-walk still confirms.</p>
+
+  <textarea id="in" placeholder="Paste the full HTML of a page here…" spellcheck="false"></textarea>
+  <div class="row">
+    <button id="scan">Scan</button>
+    <button id="sample" class="ghost">Load a broken sample</button>
+    <span id="meta" class="sub" style="margin:0"></span>
+  </div>
+  <div id="out"></div>
+
+  <p class="note">ui-gate reads static markup — it does not run the page — so it flags what is almost
+  certainly wrong, not everything (a value only broken at runtime, or a function defined in an external
+  <code>.js</code>, may slip past or be over-reported). Kernel: <code>uigate.mjs</code>, witness-gated
+  (19/19, zero baselines). Not affiliated with any site it scans.</p>
+</div>
+
+<script>/*__KERNEL_START__*/
+(function(){
+// ui-gate · uigate.mjs — the gate the LAST TWO passes earned.
+//
+// fallaccount and redress-engine both had a PROVEN kernel and an UN-WALKED user surface: an empty
+// "load sample" demo, a badge that said "◊ DEAD", a stale tax-year label, a double full-stop in the
+// letter. The witness gate never sees any of that — it proves the maths, not what a human hits. This
+// is the gate for the SURFACE: the class of defect a user meets that a kernel gate is blind to.
+//
+// Pure and total: HTML string in, findings out, NEVER throws (a vulnerable page must not crash the
+// gate). It reads static markup — it does not run the page — so it is a FIRST pass: it flags what is
+// almost certainly wrong; a browser-walk still confirms. Deterministic, so it can be gated itself.
+
+const S = (v) => (typeof v === 'string' ? v : '');
+
+// ── extract the <script> bodies and the visible (non-script/style) text ───────────────────────────
+function scripts(html) {
+  const out = [];
+  const re = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
+  let m; while ((m = re.exec(html))) out.push(m[1]);
+  return out;
+}
+function visibleText(html) {
+  return S(html)
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/[ \t]+/g, ' ');
+}
+const clip = (s, n = 80) => { s = S(s).replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n) + '…' : s; };
+
+// ── 1 · alarm literals a user should never see, in visible text OR injected by a script ───────────
+// high = a broken value rendered as-is; medium = dev/placeholder text that shipped.
+const ALARMS = [
+  { re: /\[object Object\]/g, kind: 'alarm-literal', sev: 'high', why: '"[object Object]" — an object was string-concatenated instead of a field' },
+  { re: /\bundefined\b/g, kind: 'alarm-literal', sev: 'high', why: '"undefined" rendered to the user — a missing value reached the DOM' },
+  { re: /\bNaN\b/g, kind: 'alarm-literal', sev: 'high', why: '"NaN" — a number calculation failed and shipped the failure' },
+  { re: /£\s*NaN|NaN\s*%|\$NaN/g, kind: 'alarm-literal', sev: 'high', why: 'a money/percent field computed NaN' },
+  { re: /\bDEAD\b/g, kind: 'alarm-word', sev: 'medium', why: '"DEAD" shown to a user reads as broken (e.g. an unlicensed-tier badge)' },
+  { re: /\b(TODO|FIXME|XXX|PLACEHOLDER|TBD|WIP)\b/g, kind: 'placeholder-text', sev: 'medium', why: 'dev placeholder text shipped to users' },
+  { re: /lorem ipsum/gi, kind: 'placeholder-text', sev: 'medium', why: 'lorem-ipsum filler shipped' },
+  { re: /[A-Za-z][.]{2}(?![.])/g, kind: 'punctuation', sev: 'low', why: 'a word followed by exactly two full stops ("..") — a template appended a stop to text that already ended in one (not an ellipsis)' },
+];
+function alarmFindings(html) {
+  const out = [];
+  const text = visibleText(html);
+  const scriptText = scripts(html).join('\n');
+  for (const a of ALARMS) {
+    // visible text is the strong signal
+    let m; a.re.lastIndex = 0;
+    while ((m = a.re.exec(text))) {
+      out.push({ kind: a.kind, severity: a.sev, why: a.why, evidence: clip(text.slice(Math.max(0, m.index - 30), m.index + 40)) });
+    }
+    // script string-literals that get assigned to what the user sees
+    if (a.kind === 'alarm-word' || a.kind === 'alarm-literal') {
+      // case-SENSITIVE and keep the word boundaries: "NaN" is an exact JS token, not the "nan"
+      // inside "Tenant"; the alarm source is wrapped in (?:…) so its own alternation stays contained.
+      const assignRe = new RegExp('(textContent|innerHTML|innerText|placeholder|value)\\s*[=:]\\s*[`\'"][^`\'"]*?(?:' + a.re.source + ')[^`\'"]*?[`\'"]', 'g');
+      let s; while ((s = assignRe.exec(scriptText))) {
+        out.push({ kind: a.kind, severity: a.sev, why: a.why + ' (assigned to the DOM in a script)', evidence: clip(s[0]) });
+      }
+    }
+  }
+  return out;
+}
+
+// ── 2 · dead controls: an on*-handler calling a function the page never defines ───────────────────
+function deadControls(html) {
+  const out = [];
+  const scriptText = scripts(html).join('\n');
+  const handlers = new Set();
+  const hre = /\bon\w+\s*=\s*"([^"]*)"|\bon\w+\s*=\s*'([^']*)'/g;
+  let h; while ((h = hre.exec(html))) {
+    const code = h[1] || h[2] || '';
+    const cre = /([A-Za-z_$][\w$]*)\s*\(/g; let c;
+    while ((c = cre.exec(code))) {
+      const fn = c[1];
+      // a method call (obj.fn() / this.fn()) is not a page-defined global — skip it
+      if (code[c.index - 1] === '.') continue;
+      // skip language keywords and builtins that are never page-defined globals
+      if (/^(if|for|while|return|typeof|new|this|event|alert|confirm|prompt|console|parseInt|parseFloat|Number|String|Boolean|Array|Object|JSON|Math|Date|window|document|location|history|setTimeout|setInterval)$/.test(fn)) continue;
+      handlers.add(fn);
+    }
+  }
+  for (const fn of handlers) {
+    const def = new RegExp(
+      '(function\\s+' + fn + '\\b)|' +
+      '\\b' + fn + '\\s*[=:]\\s*(function|\\([^)]*\\)\\s*=>|async)|' +
+      '\\b(const|let|var)\\s+' + fn + '\\b|' +
+      'window\\.' + fn + '\\s*=|' +
+      '\\b' + fn + '\\s*\\([^)]*\\)\\s*\\{'   // method-style definition
+    );
+    if (!def.test(scriptText)) {
+      out.push({ kind: 'dead-control', severity: 'medium', why: `a control calls ${fn}() but no INLINE script defines it — likely a dead button (unless it lives in an external .js)`, evidence: fn + '()' });
+    }
+  }
+  return out;
+}
+
+// ── 3 · inconsistent year labels (the fallaccount tax-year bug) ───────────────────────────────────
+function yearConsistency(html) {
+  const text = visibleText(html);
+  const years = new Set();
+  let m; const re = /\b(20\d\d)\s*[\/–-]\s*(\d\d)\b/g;
+  while ((m = re.exec(text))) years.add(m[1] + '-' + m[2]);
+  if (years.size > 1) {
+    return [{ kind: 'inconsistent-year', severity: 'medium', why: 'the page shows more than one tax-year label — at most one is current', evidence: [...years].join(' vs ') }];
+  }
+  return [];
+}
+
+// ── 4 · undefined CSS custom properties (used but never defined) ──────────────────────────────────
+function cssVars(html) {
+  const defined = new Set(); let m;
+  const dre = /(--[\w-]+)\s*:/g; while ((m = dre.exec(html))) defined.add(m[1]);
+  const used = new Set();
+  const ure = /var\(\s*(--[\w-]+)/g; while ((m = ure.exec(html))) used.add(m[1]);
+  const out = [];
+  for (const v of used) if (!defined.has(v)) out.push({ kind: 'undefined-css-var', severity: 'medium', why: `CSS var ${v} is used but never defined — it silently falls back to nothing`, evidence: `var(${v})` });
+  return out;
+}
+
+// ── 5 · placeholder / dead links ──────────────────────────────────────────────────────────────────
+function deadLinks(html) {
+  const out = []; let m;
+  const re = /<a\b[^>]*\bhref\s*=\s*("|')(.*?)\1[^>]*>(.*?)<\/a>/gis;
+  while ((m = re.exec(html))) {
+    const href = S(m[2]).trim();
+    if (href === '' || href === '#' || /^javascript:\s*void/i.test(href) || /^(TODO|TBD|#)$/i.test(href)) {
+      // '#' with an id target elsewhere is fine only if it's an in-page anchor the page uses; a bare '#' is a dead link
+      const label = clip(m[3].replace(/<[^>]+>/g, ''), 40);
+      out.push({ kind: 'dead-link', severity: 'low', why: `a link labelled "${label}" points nowhere (href="${href || '(empty)'}")`, evidence: href || '(empty)' });
+    }
+  }
+  return out;
+}
+
+const RANK = { high: 0, medium: 1, low: 2 };
+
+/** Scan one page's HTML. Returns { ok, count, findings[] } sorted worst-first. Never throws. */
+function scanHtml(html) {
+  try {
+    const src = S(html);
+    if (!src.trim()) return { ok: true, count: 0, findings: [] };
+    const findings = [
+      ...alarmFindings(src), ...deadControls(src), ...yearConsistency(src), ...cssVars(src), ...deadLinks(src),
+    ];
+    findings.sort((a, b) => (RANK[a.severity] - RANK[b.severity]) || a.kind.localeCompare(b.kind));
+    return { ok: findings.length === 0, count: findings.length, findings };
+  } catch {
+    return { ok: true, count: 0, findings: [], note: 'scan aborted safely' };
+  }
+}
+window.UIGATE = { scanHtml, clip };
+})();
+/*__KERNEL_END__*/</script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const SEV = { high:'🔴', medium:'🟠', low:'🟡' };
+  function render(html){
+    const r = window.UIGATE.scanHtml(html);
+    $('meta').textContent = '';
+    if (!html.trim()){ $('out').innerHTML = ''; return; }
+    if (r.ok){ $('out').innerHTML = '<p class="clean">✓ Clean — no user-surface defects found in the static markup.</p>'; return; }
+    const by = { high:0, medium:0, low:0 }; r.findings.forEach(f=>by[f.severity]++);
+    $('out').innerHTML = `<p class="summary">${r.count} finding(s): ${by.high} 🔴 · ${by.medium} 🟠 · ${by.low} 🟡</p>` +
+      r.findings.map(f=>`<div class="f ${f.severity}"><span class="k">${SEV[f.severity]} ${esc(f.kind)}</span>
+        <div class="why">${esc(f.why)}</div>${f.evidence?`<div class="ev">${esc(f.evidence)}</div>`:''}</div>`).join('');
+  }
+  $('scan').onclick = () => render($('in').value);
+  $('sample').onclick = () => {
+    $('in').value = `<!doctype html><html><head><style>:root{--ink:#111}</style></head>
+<body style="color:var(--ink);background:var(--bg)">
+  <h1>Invoice 2025-26</h1>
+  <p>Balance: [object Object] — VAT £NaN</p>
+  <p>rates for 2026/27</p>
+  <button onclick="downloadPdf()">Download</button>
+  <a href="#">Terms</a>
+  <script>document.querySelector('.badge').textContent = '◊ DEAD';<\/script>
+</body></html>`;
+    render($('in').value);
+  };
+</script>
+</body>
+</html>

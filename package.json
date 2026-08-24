@@ -1,0 +1,14 @@
+{
+  "name": "ui-gate",
+  "version": "0.1.0",
+  "description": "The gate for the surface: a static first-pass lint that catches the user-facing defects a kernel gate is blind to — shipped undefined/NaN, a DEAD badge, dead controls, undefined CSS vars, dead links, stale year labels. Witness-gated. Not affiliated with any scanned site.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test uigate.test.mjs",
+    "scan": "node run.mjs",
+    "page": "node build-page.mjs"
+  },
+  "keywords": ["ui-lint", "static-analysis", "proof-of-play", "sovereign", "quality-gate"],
+  "engines": { "node": ">=20" }
+}

@@ -90,6 +90,8 @@ test('PLACEHOLDER TEXT — a standalone marker fires, a hyphenated word does not
 test('UNDEFINED CSS VAR — used but never defined is flagged; a defined one is not', () => {
   assert.ok(has(scanHtml('<div style="color:var(--ghost)">x</div>'), 'undefined-css-var'));
   assert.ok(!has(scanHtml('<style>:root{--ink:#111}</style><div style="color:var(--ink)">x</div>'), 'undefined-css-var'));
+  // a var WITH a fallback is not a defect — it falls back to the given value, not to nothing
+  assert.ok(!has(scanHtml('<div style="color:var(--ghost, #333)">x</div>'), 'undefined-css-var'));
 });
 
 test('DEAD LINK — href="#", empty, or javascript:void points nowhere', () => {

@@ -162,7 +162,9 @@ function cssVars(html) {
   const defined = new Set(); let m;
   const dre = /(--[\w-]+)\s*:/g; while ((m = dre.exec(html))) defined.add(m[1]);
   const used = new Set();
-  const ure = /var\(\s*(--[\w-]+)/g; while ((m = ure.exec(html))) used.add(m[1]);
+  // only var() uses WITHOUT a fallback: `var(--x)` silently falls back to nothing if --x is undefined,
+  // but `var(--x, #fff)` falls back to the given value — not a defect. So require `)` right after the name.
+  const ure = /var\(\s*(--[\w-]+)\s*\)/g; while ((m = ure.exec(html))) used.add(m[1]);
   const out = [];
   for (const v of used) if (!defined.has(v)) out.push({ kind: 'undefined-css-var', severity: 'medium', why: `CSS var ${v} is used but never defined — it silently falls back to nothing`, evidence: `var(${v})` });
   return out;

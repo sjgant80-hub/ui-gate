@@ -189,19 +189,29 @@ function deadLinks(html) {
 
 const RANK = { high: 0, medium: 1, low: 2 };
 
-/** Scan one page's HTML. Returns { ok, count, findings[] } sorted worst-first. Never throws. */
+/** Scan one page's HTML. Returns { ok, count, findings[] } sorted worst-first. Never throws.
+ *
+ * THE ANTI-NARROWING LAW (the ConsentNarrows audit, 2026-09-08 — the lead came from the
+ * resident's sandbox): an unverified page must never read as a clean one. Three narrowings
+ * closed: a NON-STRING input used to pass silently; an EMPTY page used to pass (a blank
+ * live surface is a defect, not an absence); and a CRASHED check used to return ok:true
+ * ("scan aborted safely" — a crashed check is not a passed check). Each check now runs in
+ * its own guard: one crashing axis becomes a finding, the other axes still speak. */
 export function scanHtml(html) {
-  try {
-    const src = S(html);
-    if (!src.trim()) return { ok: true, count: 0, findings: [] };
-    const findings = [
-      ...alarmFindings(src), ...deadControls(src), ...yearConsistency(src), ...cssVars(src), ...deadLinks(src),
-    ];
-    findings.sort((a, b) => (RANK[a.severity] - RANK[b.severity]) || a.kind.localeCompare(b.kind));
-    return { ok: findings.length === 0, count: findings.length, findings };
-  } catch {
-    return { ok: true, count: 0, findings: [], note: 'scan aborted safely' };
+  if (typeof html !== 'string') {
+    return { ok: false, count: 1, findings: [{ kind: 'not-a-page', severity: 'high', why: 'the scanner was handed a non-string — an unverified page must never read as a clean one', evidence: String(typeof html) }] };
   }
+  if (!html.trim()) {
+    return { ok: false, count: 1, findings: [{ kind: 'blank-page', severity: 'high', why: 'the page is EMPTY — a blank live surface is a defect, not a pass', evidence: '(empty)' }] };
+  }
+  const findings = [];
+  const CHECKS = [['alarm', alarmFindings], ['dead-controls', deadControls], ['year', yearConsistency], ['css-vars', cssVars], ['dead-links', deadLinks]];
+  for (const [name, fn] of CHECKS) {
+    try { findings.push(...fn(html)); }
+    catch { findings.push({ kind: 'gate-crashed', severity: 'high', why: 'the ' + name + ' check CRASHED on this page — a crashed check is not a passed check; this axis is UNVERIFIED', evidence: name }); }
+  }
+  findings.sort((a, b) => (RANK[a.severity] - RANK[b.severity]) || a.kind.localeCompare(b.kind));
+  return { ok: findings.length === 0, count: findings.length, findings };
 }
 
 export default scanHtml;

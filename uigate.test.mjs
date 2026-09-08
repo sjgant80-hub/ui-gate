@@ -205,3 +205,24 @@ test('FUZZ — never throws on garbage', () => {
     assert.ok(Array.isArray(r.findings));
   }
 });
+
+test('THE ANTI-NARROWING LAW — an unverified page never reads as a clean one', () => {
+  // non-string input: the old kernel passed it silently as an empty page
+  for (const junk of [undefined, null, 7, {}, { toString() { throw new Error('boom'); } }]) {
+    const r = scanHtml(junk);
+    assert.equal(r.ok, false, String(typeof junk) + ' must not scan as clean');
+    assert.equal(r.findings[0].kind, 'not-a-page');
+    assert.match(r.findings[0].why, /an unverified page must never read as a clean one/);
+  }
+  // the empty page: a blank live surface is a defect, not an absence
+  for (const blank of ['', '   ', '\n\t']) {
+    const r = scanHtml(blank);
+    assert.equal(r.ok, false, 'blank must not scan as clean');
+    assert.equal(r.findings[0].kind, 'blank-page');
+    assert.match(r.findings[0].why, /a blank live surface is a defect, not a pass/);
+  }
+  // and a real page still scans normally — the law tightened, the gate did not go blind
+  const fine = scanHtml('<!doctype html><html><body><p>hello world</p></body></html>');
+  assert.equal(typeof fine.ok, 'boolean');
+  assert.ok(!fine.findings.some((f) => f.kind === 'not-a-page' || f.kind === 'blank-page'));
+});

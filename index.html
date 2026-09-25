@@ -223,6 +223,32 @@ function yearConsistency(html) {
 }
 
 // ── 4 · undefined CSS custom properties (used but never defined) ──────────────────────────────────
+// A page can define its palette in an EXTERNAL stylesheet (<link rel=stylesheet> / @import). This static
+// scan reads only the HTML — it cannot see that CSS — so a var used here but not defined here is NOT a
+// confirmed defect when such a stylesheet is linked (the definition may live in the file we didn't read).
+// Font stylesheets (Google Fonts) define no colour vars, so they don't count as an unread palette source;
+// a data: stylesheet is inline, so it is not "unread". Blind-flagging externally-defined vars is exactly
+// the false-positive class that inflated the 2026-09-25 estate pass ~3× (fallmarket/fallforge et al. were
+// FINE — their palettes live in assets/*.css) — and a gate that cries wolf is worse than none.
+function linksUnreadStylesheet(html) {
+  const linkRe = /<link\b[^>]*>/gi; let m;
+  while ((m = linkRe.exec(html))) {
+    const tag = m[0];
+    if (!/\brel\s*=\s*["']?\s*stylesheet\b/i.test(tag)) continue;
+    const href = (tag.match(/\bhref\s*=\s*["']([^"']*)["']/i) || [])[1] || '';
+    if (!href || /^data:/i.test(href)) continue;                          // inline / no target: nothing unread
+    if (/fonts\.googleapis\.com|fonts\.gstatic\.com/i.test(href)) continue; // font CSS: no colour vars
+    return true;                                                          // a real external stylesheet we can't read
+  }
+  // @import of a non-font, non-data target pulls external CSS too
+  const impRe = /@import\s+(?:url\(\s*)?["']?([^"')\s]+)/gi;
+  while ((m = impRe.exec(html))) {
+    const url = m[1] || '';
+    if (/^data:/i.test(url) || /fonts\.googleapis\.com|fonts\.gstatic\.com/i.test(url)) continue;
+    return true;
+  }
+  return false;
+}
 function cssVars(html) {
   const defined = new Set(); let m;
   const dre = /(--[\w-]+)\s*:/g; while ((m = dre.exec(html))) defined.add(m[1]);
@@ -230,16 +256,34 @@ function cssVars(html) {
   // only var() uses WITHOUT a fallback: `var(--x)` silently falls back to nothing if --x is undefined,
   // but `var(--x, #fff)` falls back to the given value — not a defect. So require `)` right after the name.
   const ure = /var\(\s*(--[\w-]+)\s*\)/g; while ((m = ure.exec(html))) used.add(m[1]);
-  const out = [];
-  for (const v of used) if (!defined.has(v)) out.push({ kind: 'undefined-css-var', severity: 'medium', why: `CSS var ${v} is used but never defined — it silently falls back to nothing`, evidence: `var(${v})` });
-  return out;
+  const unresolved = [...used].filter((v) => !defined.has(v));
+  if (unresolved.length === 0) return [];
+  // an unread external stylesheet may define them — downgrade to ONE low caveat, never claim a defect.
+  if (linksUnreadStylesheet(html)) {
+    return [{ kind: 'external-css-caveat', severity: 'low',
+      why: `${unresolved.length} CSS var(s) are used but not defined in this HTML (${unresolved.join(', ')}) — they may be defined in a linked stylesheet this static scan did not read; verify in a browser`,
+      evidence: unresolved.slice(0, 8).map((v) => `var(${v})`).join(' ') }];
+  }
+  // inline-only page: a used-but-undefined var genuinely falls back to nothing.
+  return unresolved.map((v) => ({ kind: 'undefined-css-var', severity: 'medium', why: `CSS var ${v} is used but never defined — it silently falls back to nothing`, evidence: `var(${v})` }));
 }
 
 // ── 5 · placeholder / dead links ──────────────────────────────────────────────────────────────────
+// Scan the markup with <script>/<style> bodies removed FIRST: a JS template string like
+// `el.innerHTML = '<a href="#">' + esc(f) + '</a>'` is code, not a rendered link — matching it flagged
+// 50 phantom dead-links on fallharbor in the 2026-09-25 pass. <a> tags never live in <style>. Dynamically
+// injected links are then invisible to this static pass — the honest first-pass tradeoff (no cry-wolf).
+function markupNoScripts(html) {
+  return S(html)
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ' ')
+    .replace(/<script\b[^>]*>[\s\S]*$/i, ' ')   // unclosed trailing script → strip to EOF
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, ' ');
+}
 function deadLinks(html) {
   const out = []; let m;
+  const src = markupNoScripts(html);
   const re = /<a\b([^>]*)\bhref\s*=\s*("|')(.*?)\2([^>]*)>(.*?)<\/a>/gis;
-  while ((m = re.exec(html))) {
+  while ((m = re.exec(src))) {
     const attrs = (m[1] || '') + (m[4] || '');
     const href = S(m[3]).trim();
     // an anchor wired to JS (onclick/onmousedown/role=button) is an intentional control, not a dead link

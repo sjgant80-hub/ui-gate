@@ -105,6 +105,33 @@ test('DEAD LINK — href="#", empty, or javascript:void points nowhere', () => {
   assert.ok(!has(scanHtml('<a href="#" role="button">Toggle</a>'), 'dead-link'));
 });
 
+test('EXTERNAL STYLESHEET — an externally-defined var is a caveat, not a defect (the 2026-09-25 class)', () => {
+  // fallmarket/fallforge define their palette in assets/*.css and use the vars inline; the static scan
+  // can't read that file, so it must NOT claim the var is undefined.
+  const ext = scanHtml(`<link rel="stylesheet" href="assets/style.css"><div style="color:var(--brass)">x</div>`);
+  assert.ok(!has(ext, 'undefined-css-var'), 'an externally-defined var must not be flagged as a defect');
+  assert.ok(has(ext, 'external-css-caveat'), 'it downgrades to a caveat — cannot verify ≠ broken');
+  assert.equal(ext.findings.find((f) => f.kind === 'external-css-caveat').severity, 'low');
+  // a FONT stylesheet defines no colour vars — it does NOT excuse an undefined var
+  assert.ok(has(scanHtml(`<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter"><div style="color:var(--ghost)">x</div>`), 'undefined-css-var'), 'a font stylesheet is not an unread palette source');
+  // inline-only page still flags a genuine undefined var (the gate did not go blind)
+  assert.ok(has(scanHtml('<div style="color:var(--ghost)">x</div>'), 'undefined-css-var'), 'inline-only genuine defect still fires');
+  // @import of real CSS also excuses it
+  assert.ok(!has(scanHtml('<style>@import url("theme.css");</style><div style="color:var(--x)">y</div>'), 'undefined-css-var'), '@import pulls unread CSS too');
+  // an EMPTY-href stylesheet points to nothing — NOT an unread source, so an undefined var still fires
+  assert.ok(has(scanHtml('<link rel="stylesheet" href=""><div style="color:var(--ghost)">x</div>'), 'undefined-css-var'), 'an empty-href stylesheet is not unread CSS');
+  // a FONT @import is not a palette source either — an undefined var still fires
+  assert.ok(has(scanHtml('<style>@import url("https://fonts.googleapis.com/css2?family=Inter");</style><div style="color:var(--ghost2)">x</div>'), 'undefined-css-var'), 'a font @import is not an unread palette source');
+});
+
+test('DEAD LINK inside a <script> string is not a rendered link (the fallharbor class)', () => {
+  // fallharbor built rows with a JS template: `<a href="#">${esc(f)}</a>` — 50 in-script, none rendered.
+  const inScript = `<body><div id="app"></div><script>el.innerHTML = '<a href="#">' + esc(f) + '</a>';</script>`;
+  assert.ok(!has(scanHtml(inScript), 'dead-link'), 'an <a href="#"> inside a <script> string is not a real dead link');
+  // a REAL dead link in the body still fires — the strip didn't blind the check
+  assert.ok(has(scanHtml('<body><a href="#">Terms</a></body>'), 'dead-link'), 'a real body dead link still fires');
+});
+
 test('A CLEAN PAGE TRIPS NOTHING — no false positives on a well-formed page', () => {
   const clean = `<!doctype html><html><head><style>:root{--ink:#111;--bg:#fff}</style></head>
     <body style="color:var(--ink);background:var(--bg)">
